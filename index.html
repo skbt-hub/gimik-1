@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Jigsaw Puzzle Boleh Drag & Drop</title>
+    <title>Dynamic Jigsaw Puzzle</title>
     <style>
         body {
-            font-family: sans-serif;
+            font-family: Arial, sans-serif;
             text-align: center;
             background-color: #f0f0f0;
             display: flex;
@@ -12,145 +12,225 @@
             align-items: center;
             padding: 20px;
         }
-        .puzzle-title {
-            margin-bottom: 20px;
+        h1 {
             color: #333;
         }
-        .puzzle-board {
-            width: 800px;
-            height: 533px;
+        .controls {
+            margin-bottom: 20px;
+        }
+        #fileInput {
+            margin-right: 10px;
+        }
+        #piecesCount {
+            padding: 5px;
+            border-radius: 5px;
+        }
+        #startButton {
+            padding: 5px 15px;
+            cursor: pointer;
+            border: none;
+            background-color: #4CAF50;
+            color: white;
+            border-radius: 5px;
+        }
+        #puzzleContainer {
             border: 2px solid #333;
             background-color: #e0e0e0;
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            grid-template-rows: repeat(2, 1fr);
-            gap: 5px;
-            position: relative; /* Penting untuk kedudukan kepingan */
+            position: relative;
             margin-bottom: 30px;
         }
-        .drop-zone {
-            width: 100%;
-            height: 100%;
-            border: 1px dashed #aaa;
-            box-sizing: border-box;
-        }
-        .puzzle-pieces-container {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            width: 800px;
-            gap: 5px;
-        }
         .puzzle-piece {
-            width: 261.67px; /* (800 - 5*2) / 3 */
-            height: 261.5px; /* (533 - 5) / 2 */
-            background-image: url('gimik.png');
-            background-size: 800px 533px;
+            position: absolute;
+            background-size: cover;
             cursor: grab;
             border: 1px solid #ccc;
             box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+            transition: transform 0.1s ease-out;
         }
-        .piece-1 { background-position: 0 0; }
-        .piece-2 { background-position: -266.67px 0; }
-        .piece-3 { background-position: -533.34px 0; }
-        .piece-4 { background-position: 0 -266.5px; }
-        .piece-5 { background-position: -266.67px -266.5px; }
-        .piece-6 { background-position: -533.34px -266.5px; }
-
-        .correct {
-            border: 2px solid green;
-            box-shadow: none;
-            cursor: default;
+        .puzzle-piece.dragging {
+            z-index: 1000;
+        }
+        #piecesHolder {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            width: 100%;
+            gap: 5px;
         }
     </style>
 </head>
 <body>
-    <h1 class="puzzle-title">Jigsaw Puzzle Malaysia ke-68</h1>
-    
-    <div class="puzzle-board">
-        <div class="drop-zone" data-id="1"></div>
-        <div class="drop-zone" data-id="2"></div>
-        <div class="drop-zone" data-id="3"></div>
-        <div class="drop-zone" data-id="4"></div>
-        <div class="drop-zone" data-id="5"></div>
-        <div class="drop-zone" data-id="6"></div>
+    <h1>Dynamic Jigsaw Puzzle</h1>
+    <div class="controls">
+        <input type="file" id="fileInput" accept="image/*">
+        <label for="piecesCount">Bilangan Kepingan:</label>
+        <select id="piecesCount">
+            <option value="6">6</option>
+            <option value="8">8</option>
+            <option value="10">10</option>
+            <option value="12">12</option>
+        </select>
+        <button id="startButton">Mula Puzzle</button>
     </div>
-    
-    <div class="puzzle-pieces-container" id="piecesContainer">
-        <div class="puzzle-piece piece-1" draggable="true" data-id="1"></div>
-        <div class="puzzle-piece piece-2" draggable="true" data-id="2"></div>
-        <div class="puzzle-piece piece-3" draggable="true" data-id="3"></div>
-        <div class="puzzle-piece piece-4" draggable="true" data-id="4"></div>
-        <div class="puzzle-piece piece-5" draggable="true" data-id="5"></div>
-        <div class="puzzle-piece piece-6" draggable="true" data-id="6"></div>
-    </div>
+
+    <div id="puzzleContainer"></div>
 
     <script>
-        const pieces = document.querySelectorAll('.puzzle-piece');
-        const dropZones = document.querySelectorAll('.drop-zone');
-        const piecesContainer = document.getElementById('piecesContainer');
+        const fileInput = document.getElementById('fileInput');
+        const piecesCountSelect = document.getElementById('piecesCount');
+        const startButton = document.getElementById('startButton');
+        const puzzleContainer = document.getElementById('puzzleContainer');
         
-        let draggedPiece = null;
+        let originalImage = null;
+        let pieces = [];
+        let gridSize = {};
 
-        // Shuffle pieces
-        function shufflePieces() {
-            for (let i = piecesContainer.children.length; i >= 0; i--) {
-                piecesContainer.appendChild(piecesContainer.children[Math.random() * i | 0]);
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    originalImage = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        startButton.addEventListener('click', () => {
+            if (!originalImage) {
+                alert('Sila muat naik gambar terlebih dahulu.');
+                return;
+            }
+            createPuzzle();
+        });
+
+        function createPuzzle() {
+            puzzleContainer.innerHTML = '';
+            pieces = [];
+
+            const image = new Image();
+            image.src = originalImage;
+            image.onload = () => {
+                const piecesCount = parseInt(piecesCountSelect.value);
+                let rows, cols;
+                if (piecesCount === 6) { rows = 2; cols = 3; }
+                else if (piecesCount === 8) { rows = 2; cols = 4; }
+                else if (piecesCount === 10) { rows = 2; cols = 5; }
+                else { rows = 3; cols = 4; }
+
+                gridSize.rows = rows;
+                gridSize.cols = cols;
+
+                const pieceWidth = image.width / cols;
+                const pieceHeight = image.height / rows;
+
+                puzzleContainer.style.width = `${image.width}px`;
+                puzzleContainer.style.height = `${image.height}px`;
+
+                for (let i = 0; i < rows * cols; i++) {
+                    const row = Math.floor(i / cols);
+                    const col = i % cols;
+
+                    const piece = document.createElement('div');
+                    piece.className = 'puzzle-piece';
+                    piece.draggable = true;
+                    piece.style.width = `${pieceWidth}px`;
+                    piece.style.height = `${pieceHeight}px`;
+                    piece.style.backgroundImage = `url(${originalImage})`;
+                    piece.style.backgroundSize = `${image.width}px ${image.height}px`;
+                    piece.style.backgroundPosition = `-${col * pieceWidth}px -${row * pieceHeight}px`;
+                    
+                    piece.dataset.row = row;
+                    piece.dataset.col = col;
+                    
+                    pieces.push(piece);
+                }
+
+                shuffleAndPlacePieces();
+            };
+        }
+
+        function shuffleAndPlacePieces() {
+            // Shuffle pieces
+            pieces.sort(() => Math.random() - 0.5);
+
+            const piecesHolder = document.createElement('div');
+            piecesHolder.id = 'piecesHolder';
+            puzzleContainer.appendChild(piecesHolder);
+
+            pieces.forEach(piece => {
+                piece.style.position = 'relative';
+                piece.style.top = '0';
+                piece.style.left = '0';
+                piecesHolder.appendChild(piece);
+            });
+
+            addDragAndDropEvents();
+        }
+
+        function addDragAndDropEvents() {
+            let draggedItem = null;
+
+            pieces.forEach(piece => {
+                piece.addEventListener('dragstart', (e) => {
+                    draggedItem = e.target;
+                    setTimeout(() => {
+                        e.target.classList.add('dragging');
+                    }, 0);
+                });
+                
+                piece.addEventListener('dragend', (e) => {
+                    e.target.classList.remove('dragging');
+                });
+            });
+
+            // Create drop zones
+            for (let i = 0; i < gridSize.rows * gridSize.cols; i++) {
+                const dropZone = document.createElement('div');
+                dropZone.className = 'drop-zone';
+                dropZone.style.width = `${puzzleContainer.offsetWidth / gridSize.cols}px`;
+                dropZone.style.height = `${puzzleContainer.offsetHeight / gridSize.rows}px`;
+                dropZone.style.border = '1px dashed #aaa';
+                dropZone.style.position = 'absolute';
+                dropZone.style.top = `${Math.floor(i / gridSize.cols) * (puzzleContainer.offsetHeight / gridSize.rows)}px`;
+                dropZone.style.left = `${(i % gridSize.cols) * (puzzleContainer.offsetWidth / gridSize.cols)}px`;
+                dropZone.dataset.row = Math.floor(i / gridSize.cols);
+                dropZone.dataset.col = i % gridSize.cols;
+                puzzleContainer.appendChild(dropZone);
+
+                dropZone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                });
+
+                dropZone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    const targetRow = e.target.dataset.row;
+                    const targetCol = e.target.dataset.col;
+
+                    if (draggedItem.dataset.row === targetRow && draggedItem.dataset.col === targetCol) {
+                        e.target.appendChild(draggedItem);
+                        draggedItem.style.position = 'relative';
+                        draggedItem.style.top = '0';
+                        draggedItem.style.left = '0';
+                        draggedItem.draggable = false; // Disable drag once correctly placed
+                        checkWinCondition();
+                    } else {
+                        // Optional: berikan maklum balas jika salah
+                    }
+                });
             }
         }
-        shufflePieces();
-
-        // Event listener for drag start
-        pieces.forEach(piece => {
-            piece.addEventListener('dragstart', (e) => {
-                draggedPiece = e.target;
-                e.dataTransfer.setData('text/plain', e.target.dataset.id);
-                setTimeout(() => {
-                    e.target.style.opacity = '0.5';
-                }, 0);
-            });
-            piece.addEventListener('dragend', (e) => {
-                e.target.style.opacity = '1';
-                draggedPiece = null;
-            });
-        });
-
-        // Event listener for drop zones
-        dropZones.forEach(zone => {
-            zone.addEventListener('dragover', (e) => {
-                e.preventDefault();
-            });
-
-            zone.addEventListener('drop', (e) => {
-                e.preventDefault();
-                const pieceId = e.dataTransfer.getData('text/plain');
-                const droppedPiece = document.querySelector(`.puzzle-piece[data-id="${pieceId}"]`);
-                
-                if (e.target.dataset.id === pieceId) {
-                    // Jika kepingan betul, letakkan di tempatnya
-                    const currentDropZone = e.target;
-                    
-                    // Alihkan kepingan yang sedia ada jika ada
-                    if (currentDropZone.firstElementChild) {
-                        piecesContainer.appendChild(currentDropZone.firstElementChild);
-                    }
-                    
-                    currentDropZone.appendChild(droppedPiece);
-                    droppedPiece.classList.add('correct');
-                    droppedPiece.draggable = false; // Disable dragging once correct
-                    checkWinCondition();
-                }
-            });
-        });
 
         function checkWinCondition() {
-            let correctPieces = document.querySelectorAll('.puzzle-board .puzzle-piece').length;
-            if (correctPieces === 6) {
+            const correctPieces = puzzleContainer.querySelectorAll('.drop-zone .puzzle-piece').length;
+            if (correctPieces === pieces.length) {
                 setTimeout(() => {
                     alert('Tahniah! Anda telah berjaya menyiapkan puzzle!');
+                    puzzleContainer.removeChild(document.getElementById('piecesHolder'));
                 }, 200);
             }
         }
+
     </script>
 </body>
 </html>
